@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Poker Betting Manager</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- SETUP SCREEN -->
+    <div id="setupScreen" class="screen active">
+        <div class="setup-container">
+            <h1>🎰 Poker Betting Manager</h1>
+            <p class="subtitle">Set up your game</p>
+
+            <div class="setup-section">
+                <label for="playerCount">Number of Players (2-10):</label>
+                <div class="input-group">
+                    <button id="decPlayersBtn" class="btn-small">−</button>
+                    <input type="number" id="playerCount" min="2" max="10" value="3" readonly>
+                    <button id="incPlayersBtn" class="btn-small">+</button>
+                </div>
+            </div>
+
+            <div class="setup-section">
+                <label for="startingAmount">Starting Amount Per Player (₹):</label>
+                <input type="number" id="startingAmount" min="1" value="5000" class="input-field">
+            </div>
+
+            <div id="playerSetupList" class="player-setup-list"></div>
+
+            <div class="setup-actions">
+                <button id="startGameBtn" class="btn-primary">Start Game</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- GAME SCREEN -->
+    <div id="gameScreen" class="screen">
+        <div class="game-container">
+            <!-- TOP: POT AND GAME INFO -->
+            <div class="game-header">
+                <div class="pot-display">
+                    <div class="pot-label">POT</div>
+                    <div class="pot-amount">₹<span id="potAmount">0</span></div>
+                </div>
+                <div class="game-info">
+                    <div class="game-round-info">
+                        <span>Round: <span id="roundNumber">1</span></span>
+                    </div>
+                    <div class="active-players-info">
+                        <span>Active Players: <span id="activePlayerCount">0</span></span>
+                    </div>
+                    <div class="current-bet-info">
+                        <span>Current Bet: <span id="currentBetDisplay" style="color: var(--danger-color); font-weight: bold;">₹0</span></span>
+                    </div>
+                </div>
+                <div class="current-player-display">
+                    <span class="current-player-label">Current Turn:</span>
+                    <span class="current-player-name" id="currentPlayerDisplay">Player 1</span>
+                </div>
+            </div>
+
+            <!-- NOTIFICATION AREA -->
+            <div id="notificationArea" class="notification-area"></div>
+
+            <!-- MIDDLE: POKER TABLE WITH PLAYERS -->
+            <div class="poker-table">
+                <div id="playersContainer" class="players-grid"></div>
+            </div>
+
+            <!-- BOTTOM: BETTING ACTIONS -->
+            <div class="game-footer">
+                <div class="action-buttons" id="actionButtons">
+                    <button class="btn-action" id="checkBtn">Check</button>
+                    <button class="btn-action" id="callBtn">Call</button>
+                    <button class="btn-action" id="raiseBtn">Raise</button>
+                    <button class="btn-action" id="allInBtn">All-In</button>
+                    <button class="btn-action btn-danger" id="foldBtn">Fold</button>
+                </div>
+            </div>
+
+            <!-- RIGHT SIDE: HISTORY AND CONTROLS -->
+            <div class="side-panel">
+                <div class="history-panel">
+                    <h3>Betting History</h3>
+                    <div id="historyLog" class="history-log"></div>
+                    <button id="clearHistoryBtn" class="btn-small">Clear History</button>
+                </div>
+
+                <div class="control-panel">
+                    <h3>Round Controls</h3>
+                    <button id="endRoundBtn" class="btn-primary">End Round</button>
+                    <button id="newRoundBtn" class="btn-secondary">New Round</button>
+                    <button id="resetGameBtn" class="btn-danger">Reset Game</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- RAISE MODAL -->
+    <div id="raiseModal" class="modal">
+        <div class="modal-content">
+            <h2>Raise Amount</h2>
+            <div class="raise-info">
+                <p>Current Bet: ₹<span id="currentBetDisplay">0</span></p>
+                <p>Available Balance: ₹<span id="availableBalanceDisplay">0</span></p>
+                <p>Your Current Bet: ₹<span id="yourCurrentBetDisplay">0</span></p>
+            </div>
+
+            <div class="raise-suggestions">
+                <p class="suggestion-title">Quick Suggestions:</p>
+                <div class="suggestion-buttons">
+                    <button class="btn-suggestion" id="minRaiseBtn">Minimum</button>
+                    <button class="btn-suggestion" id="quarterPotBtn">1/4 Pot</button>
+                    <button class="btn-suggestion" id="halfPotBtn">1/2 Pot</button>
+                    <button class="btn-suggestion" id="potBtn">Pot</button>
+                    <button class="btn-suggestion" id="doublePotBtn">2x Pot</button>
+                </div>
+            </div>
+
+            <div class="raise-input-section">
+                <label for="raiseAmount">Or Enter Custom Amount:</label>
+                <input type="number" id="raiseAmount" placeholder="Enter raise amount" min="1" class="input-field">
+                <p id="raiseAmountDisplay" class="amount-display">Total Bet: ₹0</p>
+            </div>
+
+            <div class="modal-actions">
+                <button id="confirmRaiseBtn" class="btn-primary">Confirm Raise</button>
+                <button id="cancelRaiseBtn" class="btn-secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- WINNER SELECTION MODAL -->
+    <div id="winnerModal" class="modal">
+        <div class="modal-content large">
+            <h2>End Round - Select Winner(s)</h2>
+            
+            <div class="winner-selection-tabs">
+                <button class="tab-btn active" data-tab="single">Single Winner</button>
+                <button class="tab-btn" data-tab="split">Split Equally</button>
+                <button class="tab-btn" data-tab="custom">Custom Split</button>
+            </div>
+
+            <!-- SINGLE WINNER TAB -->
+            <div id="singleTab" class="tab-content active">
+                <div id="singleWinnerList" class="winner-list"></div>
+            </div>
+
+            <!-- SPLIT EQUALLY TAB -->
+            <div id="splitTab" class="tab-content">
+                <div id="splitWinnerList" class="winner-list"></div>
+            </div>
+
+            <!-- CUSTOM SPLIT TAB -->
+            <div id="customTab" class="tab-content">
+                <div id="customWinnerList" class="custom-winner-list"></div>
+                <p class="custom-split-total">Total Distributed: ₹<span id="totalDistributed">0</span> / ₹<span id="potForCustom">0</span></p>
+                <p id="customSplitError" class="error-message"></p>
+            </div>
+
+            <div class="modal-actions">
+                <button id="confirmWinnerBtn" class="btn-primary">Confirm Winner</button>
+                <button id="cancelWinnerBtn" class="btn-secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MONEY TRACKING MODAL -->
+    <div id="moneyTrackingModal" class="modal">
+        <div class="modal-content large">
+            <h2>Player Money Tracking</h2>
+            <button id="closeTrackingBtn" class="btn-small">Close</button>
+            <div id="moneyTrackingList" class="tracking-list"></div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
