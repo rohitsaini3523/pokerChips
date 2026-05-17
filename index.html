@@ -93,6 +93,18 @@
                     <button id="endRoundBtn" class="btn-primary">End Round</button>
                     <button id="newRoundBtn" class="btn-secondary">New Round</button>
                     <button id="resetGameBtn" class="btn-danger">Reset Game</button>
+                    
+                    <hr>
+                    <h3>Admin Controls</h3>
+                    <button id="showdownBtn" class="btn-primary">Force Showdown</button>
+                    <button id="undoBtn" class="btn-secondary">Undo Last Action</button>
+                    <button id="toggleAdminBtn" class="btn-secondary">Toggle Admin Mode</button>
+                    <div id="adminPanel" style="display: none; margin-top: 15px; padding: 10px; border: 1px solid #666; border-radius: 5px;">
+                        <h4 style="margin: 0 0 10px 0;">Admin Tools</h4>
+                        <button id="forceFoldBtn" class="btn-secondary">Force Fold Player</button>
+                        <button id="removePlayerBtn" class="btn-secondary">Remove Player</button>
+                        <button id="adjustBalanceBtn" class="btn-secondary">Adjust Balance</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -173,6 +185,41 @@
             <h2>Player Money Tracking</h2>
             <button id="closeTrackingBtn" class="btn-small">Close</button>
             <div id="moneyTrackingList" class="tracking-list"></div>
+        </div>
+    </div>
+
+    <!-- ADMIN: SELECT PLAYER MODAL -->
+    <div id="selectPlayerModal" class="modal">
+        <div class="modal-content">
+            <h2 id="selectPlayerTitle">Select Player</h2>
+            <div id="playerSelectionList" class="player-selection-list"></div>
+            <div class="modal-actions">
+                <button id="cancelSelectPlayerBtn" class="btn-secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ADMIN: ADJUST BALANCE MODAL -->
+    <div id="adjustBalanceModal" class="modal">
+        <div class="modal-content">
+            <h2>Adjust Player Balance</h2>
+            <p id="selectedPlayerDisplay" style="font-weight: bold; margin: 10px 0;">Selected: None</p>
+            <div class="form-group">
+                <label for="balanceAdjustAmount">Amount (₹):</label>
+                <input type="number" id="balanceAdjustAmount" placeholder="Enter amount" class="input-field">
+            </div>
+            <div class="form-group">
+                <label for="balanceAdjustType">Operation:</label>
+                <select id="balanceAdjustType" class="input-field">
+                    <option value="add">Add</option>
+                    <option value="subtract">Subtract</option>
+                    <option value="set">Set to</option>
+                </select>
+            </div>
+            <div class="modal-actions">
+                <button id="confirmAdjustBtn" class="btn-primary">Confirm</button>
+                <button id="cancelAdjustBtn" class="btn-secondary">Cancel</button>
+            </div>
         </div>
     </div>
 

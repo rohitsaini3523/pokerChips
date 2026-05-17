@@ -8,6 +8,7 @@
 const gameState = {
   players: [],
   currentPlayerIndex: 0,
+  dealerIndex: 0,
   pot: 0,
   roundNumber: 1,
   currentBet: 0,
@@ -19,6 +20,9 @@ const gameState = {
   playersWhoHaveActedThisRound: new Set(),
   lastRaiseSize: 0,
   lastAggressorIndex: null,
+  raiseSequenceTracker: {},
+  cardsRevealed: false,
+  actionHistory: [], // Track actions for undo functionality
 };
 
 const playersData = {
@@ -29,32 +33,68 @@ const playersData = {
 // POKER RULES & CONSTANTS
 // ====================
 const POKER_RULES = {
+  // Game phases
+  GAME_PHASES: {
+    PRE_FLOP: "PRE_FLOP",
+    FLOP: "FLOP",
+    TURN: "TURN",
+    RIVER: "RIVER",
+    SHOWDOWN: "SHOWDOWN",
+    ROUND_END: "ROUND_END",
+  },
+
+  // Player statuses
+  PLAYER_STATUS: {
+    ACTIVE: "active",
+    FOLDED: "folded",
+    ALL_IN: "all-in",
+    ELIMINATED: "eliminated",
+  },
+
   COMMUNITY_CARDS_STAGES: [
     {
       stage: "PRE_FLOP",
       cardsRevealed: 0,
       name: "Pre-Flop",
+      description: "Pre-flop betting round.",
     },
     {
       stage: "FLOP",
       cardsRevealed: 3,
       name: "Flop",
+      description: "3 community cards revealed",
     },
     {
       stage: "TURN",
       cardsRevealed: 4,
       name: "Turn",
+      description: "1 additional community card (4th card)",
     },
     {
       stage: "RIVER",
       cardsRevealed: 5,
       name: "River",
+      description: "Final community card (5th card)",
     },
   ],
+
+  HAND_RANKINGS: {
+    ROYAL_FLUSH: { rank: 10, name: "Royal Flush" },
+    STRAIGHT_FLUSH: { rank: 9, name: "Straight Flush" },
+    FOUR_OF_A_KIND: { rank: 8, name: "Four of a Kind" },
+    FULL_HOUSE: { rank: 7, name: "Full House" },
+    FLUSH: { rank: 6, name: "Flush" },
+    STRAIGHT: { rank: 5, name: "Straight" },
+    THREE_OF_A_KIND: { rank: 4, name: "Three of a Kind" },
+    TWO_PAIR: { rank: 3, name: "Two Pair" },
+    ONE_PAIR: { rank: 2, name: "One Pair" },
+    HIGH_CARD: { rank: 1, name: "High Card" },
+  },
 
   ACTIONS: {
     CHECK: {
       allowed: (currentBet, playerBet) => currentBet === playerBet,
+      description: "Pass without betting",
     },
 
     CALL: {
@@ -62,23 +102,109 @@ const POKER_RULES = {
         const callAmount = currentBet - playerBet;
         return callAmount > 0 && balance > 0;
       },
+      description: "Match the current bet",
     },
 
     RAISE: {
       allowed: (currentBet, playerBet, balance) => {
         return balance > currentBet - playerBet;
       },
+      description: "Increase the current bet",
     },
 
     FOLD: {
       allowed: () => true,
+      description: "Exit the hand",
     },
 
     ALL_IN: {
       allowed: (currentBet, playerBet, balance) => balance > 0,
+      description: "Bet all remaining chips",
     },
   },
 };
+
+// ====================
+// LOCALSTORAGE MANAGEMENT
+// ====================
+
+const STORAGE_KEYS = {
+  GAME_STATE: "pokerChips_gameState",
+  PLAYERS_DATA: "pokerChips_playersData",
+  GAME_HISTORY: "pokerChips_gameHistory",
+};
+
+/**
+ * Save current game state to localStorage
+ */
+function saveGameState() {
+  try {
+    // Convert Sets to Arrays for JSON serialization
+    const gameStateToSave = {
+      ...gameState,
+      playersWhoHaveActedThisRound: Array.from(gameState.playersWhoHaveActedThisRound),
+    };
+
+    localStorage.setItem(STORAGE_KEYS.GAME_STATE, JSON.stringify(gameStateToSave));
+    localStorage.setItem(STORAGE_KEYS.PLAYERS_DATA, JSON.stringify(playersData));
+    localStorage.setItem(STORAGE_KEYS.GAME_HISTORY, JSON.stringify(gameState.history));
+  } catch (error) {
+    console.error("Error saving game state:", error);
+  }
+}
+
+/**
+ * Load game state from localStorage
+ * Returns true if state was loaded, false if no saved state exists
+ */
+function loadGameState() {
+  try {
+    const savedGameState = localStorage.getItem(STORAGE_KEYS.GAME_STATE);
+    const savedPlayersData = localStorage.getItem(STORAGE_KEYS.PLAYERS_DATA);
+
+    if (!savedGameState || !savedPlayersData) {
+      return false;
+    }
+
+    const gameStateData = JSON.parse(savedGameState);
+    const playersDataValue = JSON.parse(savedPlayersData);
+
+    // Restore gameState
+    Object.assign(gameState, gameStateData);
+    
+    // Convert Arrays back to Sets
+    gameState.playersWhoHaveActedThisRound = new Set(
+      gameStateData.playersWhoHaveActedThisRound || []
+    );
+
+    // Restore playersData
+    Object.assign(playersData, playersDataValue);
+
+    // Restore history
+    const savedHistory = localStorage.getItem(STORAGE_KEYS.GAME_HISTORY);
+    if (savedHistory) {
+      gameState.history = JSON.parse(savedHistory);
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Error loading game state:", error);
+    return false;
+  }
+}
+
+/**
+ * Clear all saved game state from localStorage
+ */
+function clearSavedGameState() {
+  try {
+    localStorage.removeItem(STORAGE_KEYS.GAME_STATE);
+    localStorage.removeItem(STORAGE_KEYS.PLAYERS_DATA);
+    localStorage.removeItem(STORAGE_KEYS.GAME_HISTORY);
+  } catch (error) {
+    console.error("Error clearing saved game state:", error);
+  }
+}
 
 // ====================
 // POKER RULES VALIDATION & MANAGEMENT
@@ -122,8 +248,324 @@ function validatePokerAction(action, player) {
 }
 
 /**
+ * Hand Ranking Engine - Evaluates poker hands
+ * Returns: { rank: number, name: string, kickers: array }
+ */
+function evaluatePokerHand(cards) {
+  // Enhanced Texas Hold'em hand evaluator
+  // Selects best 5-card hand from 7 available cards
+  if (!cards || cards.length < 5) {
+    return { rank: 0, name: "Invalid Hand", kickers: [] };
+  }
+
+  const rankValues = { "A": 14, "K": 13, "Q": 12, "J": 11, "10": 10, "9": 9, "8": 8, "7": 7, "6": 6, "5": 5, "4": 4, "3": 3, "2": 2 };
+  
+  // Generate all 5-card combinations from available cards
+  let bestHand = null;
+  let bestRank = -1;
+
+  function generateCombinations(arr, size) {
+    const result = [];
+    const combine = (prefix, start) => {
+      if (prefix.length === size) {
+        result.push([...prefix]);
+        return;
+      }
+      for (let i = start; i < arr.length; i++) {
+        prefix.push(arr[i]);
+        combine(prefix, i + 1);
+        prefix.pop();
+      }
+    };
+    combine([], 0);
+    return result;
+  }
+
+  const combinations = generateCombinations(cards, 5);
+
+  for (const combo of combinations) {
+    const sorted = combo.sort((a, b) => rankValues[b.rank] - rankValues[a.rank]);
+    const values = sorted.map(c => rankValues[c.rank]);
+    const suits = sorted.map(c => c.suit);
+
+    // Check for flush
+    const isFlush = suits.every(s => s === suits[0]);
+
+    // Check for straight (including wheel A-2-3-4-5)
+    let isStraight = false;
+    let straightHigh = 0;
+    
+    if (values[0] - values[4] === 4 && new Set(values).size === 5) {
+      isStraight = true;
+      straightHigh = values[0];
+    }
+    // Wheel straight check (A-2-3-4-5)
+    else if (values[0] === 14 && values[1] === 5 && values[2] === 4 && values[3] === 3 && values[4] === 2) {
+      isStraight = true;
+      straightHigh = 5; // In wheel, 5 is high
+    }
+
+    // Count ranks for pairs, trips, quads
+    const rankCounts = {};
+    sorted.forEach(c => {
+      rankCounts[c.rank] = (rankCounts[c.rank] || 0) + 1;
+    });
+
+    const counts = Object.values(rankCounts).sort((a, b) => b - a);
+
+    // Determine hand rank and construct evaluation
+    let handRank = -1;
+    let handName = "";
+    let kickers = values;
+
+    if (isStraight && isFlush) {
+      handRank = 9;
+      handName = straightHigh === 5 ? "Straight Flush (Wheel)" : "Straight Flush";
+      kickers = straightHigh === 5 ? [5, 4, 3, 2, 1] : values;
+    } else if (counts[0] === 4) {
+      handRank = 8;
+      handName = "Four of a Kind";
+      const quad = sorted.filter(c => rankCounts[c.rank] === 4)[0];
+      kickers = [rankValues[quad.rank], ...sorted.filter(c => c.rank !== quad.rank).map(c => rankValues[c.rank])];
+    } else if (counts[0] === 3 && counts[1] === 2) {
+      handRank = 7;
+      handName = "Full House";
+      const trips = sorted.filter(c => rankCounts[c.rank] === 3)[0];
+      const pair = sorted.filter(c => rankCounts[c.rank] === 2)[0];
+      kickers = [rankValues[trips.rank], rankValues[pair.rank]];
+    } else if (isFlush) {
+      handRank = 6;
+      handName = "Flush";
+      kickers = values;
+    } else if (isStraight) {
+      handRank = 5;
+      handName = straightHigh === 5 ? "Straight (Wheel)" : "Straight";
+      kickers = straightHigh === 5 ? [5, 4, 3, 2, 1] : values;
+    } else if (counts[0] === 3) {
+      handRank = 4;
+      handName = "Three of a Kind";
+      const trips = sorted.filter(c => rankCounts[c.rank] === 3)[0];
+      const kickersArray = sorted.filter(c => c.rank !== trips.rank).map(c => rankValues[c.rank]).sort((a, b) => b - a);
+      kickers = [rankValues[trips.rank], ...kickersArray];
+    } else if (counts[0] === 2 && counts[1] === 2) {
+      handRank = 3;
+      handName = "Two Pair";
+      const pairs = sorted.filter(c => rankCounts[c.rank] === 2);
+      const pair1 = rankValues[pairs[0].rank];
+      const pair2 = rankValues[pairs[1].rank];
+      const kicker = rankValues[sorted.filter(c => rankCounts[c.rank] === 1)[0].rank];
+      kickers = [Math.max(pair1, pair2), Math.min(pair1, pair2), kicker];
+    } else if (counts[0] === 2) {
+      handRank = 2;
+      handName = "One Pair";
+      const pair = sorted.filter(c => rankCounts[c.rank] === 2)[0];
+      const kickersArray = sorted.filter(c => c.rank !== pair.rank).map(c => rankValues[c.rank]).sort((a, b) => b - a);
+      kickers = [rankValues[pair.rank], ...kickersArray];
+    } else {
+      handRank = 1;
+      handName = "High Card";
+      kickers = values;
+    }
+
+    // Update best hand if this is better
+    if (handRank > bestRank || (handRank === bestRank && compareKickers(kickers, bestHand?.kickers || []))) {
+      bestRank = handRank;
+      bestHand = { rank: handRank, name: handName, kickers };
+    }
+  }
+
+  return bestHand || { rank: 1, name: "High Card", kickers: [] };
+}
+
+function compareKickers(kickers1, kickers2) {
+  if (kickers2.length === 0) return true;
+  for (let i = 0; i < Math.min(kickers1.length, kickers2.length); i++) {
+    if (kickers1[i] > kickers2[i]) return true;
+    if (kickers1[i] < kickers2[i]) return false;
+  }
+  return false;
+}
+
+/**
+ * Compares two poker hands and returns winner
+ * Returns: { winner: 1 or 2, winningHand: hand object }
+ */
+function compareHands(hand1, hand2) {
+  const eval1 = evaluatePokerHand(hand1);
+  const eval2 = evaluatePokerHand(hand2);
+
+  if (eval1.rank > eval2.rank) return { winner: 1, winningHand: eval1 };
+  if (eval2.rank > eval1.rank) return { winner: 2, winningHand: eval2 };
+
+  // Same rank, compare kickers
+  for (let i = 0; i < eval1.kickers.length; i++) {
+    if (eval1.kickers[i] > eval2.kickers[i]) return { winner: 1, winningHand: eval1 };
+    if (eval2.kickers[i] > eval1.kickers[i]) return { winner: 2, winningHand: eval2 };
+  }
+
+  return { winner: 0, winningHand: eval1 }; // Tie
+}
+
+/**
+ * Calculate side pots when players go all-in with different amounts
+ * Returns: { mainPot: number, sidePots: [{ amount, eligiblePlayers }] }
+ */
+function calculateSidePots() {
+  const sidePots = [];
+  const activePlayers = gameState.players.filter(name => {
+    const player = playersData[name];
+    return player.status === "active" || player.status === "all-in";
+  });
+
+  if (activePlayers.length === 0) return { mainPot: gameState.pot, sidePots: [] };
+
+  // Get all unique bet amounts
+  const betAmounts = activePlayers
+    .map(name => playersData[name].currentBet)
+    .sort((a, b) => a - b);
+
+  let previousAmount = 0;
+  let potSoFar = 0;
+
+  for (let amount of betAmounts) {
+    if (amount > previousAmount) {
+      const contribution = (amount - previousAmount) * activePlayers.length;
+      const eligiblePlayers = activePlayers.filter(
+        name => playersData[name].currentBet >= amount
+      );
+
+      if (eligiblePlayers.length > 0) {
+        sidePots.push({
+          amount: contribution,
+          eligiblePlayers: eligiblePlayers,
+          minBet: amount,
+        });
+        potSoFar += contribution;
+      }
+      previousAmount = amount;
+    }
+  }
+
+  return { sidePots, totalPot: potSoFar };
+}
+
+/**
+ * Determines winner(s) based on hands (Showdown Logic)
+ * Handles side pots and tie scenarios
+ * Returns: { winners: [{ playerName, amount, hand }], distribution: {} }
+ */
+function determineShowdownWinner() {
+  const activePlayers = gameState.players.filter(name => {
+    const player = playersData[name];
+    return player.status === "active" || player.status === "all-in";
+  });
+
+  if (activePlayers.length === 0) {
+    addToHistory("No active players for showdown");
+    return { winners: [], distribution: {} };
+  }
+
+  const { sidePots } = calculateSidePots();
+  const distribution = {};
+  const winners = [];
+
+  // Evaluate each side pot
+  for (let pot of sidePots) {
+    const eligiblePlayers = pot.eligiblePlayers;
+
+    if (eligiblePlayers.length === 1) {
+      // Only one player eligible for this pot
+      const winner = eligiblePlayers[0];
+      distribution[winner] = (distribution[winner] || 0) + pot.amount;
+      winners.push({
+        playerName: winner,
+        amount: pot.amount,
+        reason: "Only eligible player",
+      });
+    } else {
+      // Multiple players - evaluate hands
+      let bestHand = null;
+      let bestPlayers = [];
+
+      for (let playerName of eligiblePlayers) {
+        // In real scenario, players would have hole cards
+        // For now, we evaluate based on community cards
+        const hand = gameState.communityCards;
+        const evaluation = evaluatePokerHand(hand);
+
+        if (!bestHand || evaluation.rank > bestHand.rank) {
+          bestHand = evaluation;
+          bestPlayers = [playerName];
+        } else if (evaluation.rank === bestHand.rank) {
+          bestPlayers.push(playerName);
+        }
+      }
+
+      // Split pot among best players
+      const amountPerWinner = Math.floor(pot.amount / bestPlayers.length);
+      const remainder = pot.amount % bestPlayers.length;
+
+      bestPlayers.forEach((playerName, index) => {
+        const amount = amountPerWinner + (index < remainder ? 1 : 0);
+        distribution[playerName] = (distribution[playerName] || 0) + amount;
+        winners.push({
+          playerName,
+          amount,
+          hand: bestHand,
+          tied: bestPlayers.length > 1,
+        });
+      });
+    }
+  }
+
+  return { winners, distribution };
+}
+
+/**
+ * Executes showdown and distributes pot
+ */
+function executeShowdown() {
+  addToHistory("--- SHOWDOWN ---");
+
+  const result = determineShowdownWinner();
+  const { winners, distribution } = result;
+
+  if (winners.length === 0) {
+    addToHistory("No winner determined. Pot returned.");
+    return;
+  }
+
+  // Distribute winnings
+  Object.entries(distribution).forEach(([playerName, amount]) => {
+    if (amount > 0) {
+      playersData[playerName].balance += amount;
+      playersData[playerName].totalWon += amount;
+      addToHistory(
+        `${playerName} wins ₹${amount.toLocaleString("en-IN")} - ${
+          winners.find(w => w.playerName === playerName)?.hand?.name || "Best hand"
+        }`
+      );
+      showNotification(
+        `${playerName} wins ₹${amount.toLocaleString("en-IN")}`,
+        "success"
+      );
+    }
+  });
+
+  // Mark losers
+  gameState.players.forEach((playerName) => {
+    if (!distribution[playerName]) {
+      const lost = playersData[playerName].currentBet;
+      playersData[playerName].totalLost += lost;
+    }
+  });
+}
+
+/**
  * Progresses game to next stage (Flop → Turn → River)
  * Reveals community cards according to Texas Hold'em rules (3, 1, 1)
+ * Special Rule for 4 Players: If Player 1 raises and Player 2 re-raises,
+ * cards are NOT revealed until Player 1 calls
  */
 function progressGameStage() {
   const stages = POKER_RULES.COMMUNITY_CARDS_STAGES;
@@ -131,9 +573,20 @@ function progressGameStage() {
     (s) => s.stage === gameState.gameStage,
   );
 
+  // Check 4-player special rule
+  if (gameState.players.length === 4 && !gameState.cardsRevealed) {
+    const raiseTracker = gameState.raiseSequenceTracker;
+    // If we have a raise-re-raise pattern and Player 1 hasn't called yet, don't progress
+    if (raiseTracker.player1Raised && raiseTracker.player2Reraised && !raiseTracker.player1Called) {
+      addToHistory(`⚠️  4-Player Rule: Cards held. Waiting for Player 1 to call Player 2's re-raise.`);
+      return false;
+    }
+  }
+
   if (currentStageIndex < stages.length - 1) {
     const nextStage = stages[currentStageIndex + 1];
     gameState.gameStage = nextStage.stage;
+    gameState.cardsRevealed = true;
 
     // Simulate card revelation (in real game, these would be actual cards)
     const cardsToAdd =
@@ -250,6 +703,33 @@ const winnerModal = document.getElementById("winnerModal");
 const moneyTrackingModal = document.getElementById("moneyTrackingModal");
 
 // ====================
+// INITIALIZE PAGE - CHECK FOR SAVED GAME
+// ====================
+
+/**
+ * Initialize the page - check for saved game state
+ */
+function initializePage() {
+  const hasSavedGame = loadGameState();
+  
+  if (hasSavedGame && gameState.gameStarted) {
+    // Restore UI to game screen
+    setupScreen.classList.remove("active");
+    gameScreen.classList.add("active");
+    renderGameBoard();
+    updatePotDisplay();
+    updateHistoryDisplay();
+    showNotification("✅ Game restored from previous session!", "success");
+    addToHistory("🔄 Game restored from previous session");
+  } else {
+    // Show setup screen
+    setupScreen.classList.add("active");
+    gameScreen.classList.remove("active");
+    updatePlayerSetupList();
+  }
+}
+
+// ====================
 // SETUP SCREEN LOGIC
 // ====================
 
@@ -331,41 +811,40 @@ function validateAndStartGame() {
   gameScreen.classList.add("active");
 
   initializeGame();
+  saveGameState();
   showNotification(`Game started with ${count} players!`, "success");
 }
 
 function initializeGame() {
-  gameState.currentPlayerIndex = 0;
+  // Start from player after dealer
+  gameState.currentPlayerIndex = (gameState.dealerIndex + 1) % gameState.players.length;
 
   gameState.pot = 0;
-
   gameState.currentBet = 0;
-
   gameState.communityCards = [];
-
   gameState.gameStage = "PRE_FLOP";
-
   gameState.bettingRoundNumber = 0;
-
   gameState.playersWhoHaveActedThisRound.clear();
-
   gameState.lastRaiseSize = 0;
-
   gameState.lastAggressorIndex = null;
-
   gameState.history = [];
+  gameState.raiseSequenceTracker = {};
+  gameState.cardsRevealed = false;
 
   gameState.players.forEach((playerName) => {
     playersData[playerName].status = "active";
-
     playersData[playerName].currentBet = 0;
   });
 
   renderGameBoard();
 
-  addToHistory("=== GAME STARTED ===");
-
-  addToHistory("🃏 Texas Hold’em Started");
+  addToHistory("=== ROUND STARTED ===");
+  addToHistory(`🎰 Dealer: ${gameState.players[gameState.dealerIndex]}`);
+  addToHistory(`📍 First to act: ${gameState.players[gameState.currentPlayerIndex]}`);
+  
+  if (gameState.players.length === 4) {
+    addToHistory("⚠️ SPECIAL 4-PLAYER RULE: P1 raises → P2 re-raises → Cards held until P1 calls!");
+  }
 }
 
 // ====================
@@ -377,14 +856,21 @@ function renderGameBoard() {
   gameState.players.forEach((playerName, index) => {
     const player = playersData[playerName];
     const isActive = index === gameState.currentPlayerIndex;
+    const isDealer = index === gameState.dealerIndex;
+    
     const playerCard = document.createElement("div");
 
     playerCard.className = "player-card";
     if (isActive) playerCard.classList.add("active");
+    if (isDealer) playerCard.classList.add("dealer");
     if (player.status === "folded") playerCard.classList.add("folded");
     if (player.status === "all-in") playerCard.classList.add("all-in");
 
+    let badges = "";
+    if (isDealer) badges += `<div class="badge dealer-badge">🎰 D</div>`;
+
     playerCard.innerHTML = `
+            ${badges}
             <div class="player-name">${player.name}</div>
             <div class="player-balance">
                 <label>Balance:</label>
@@ -553,6 +1039,8 @@ function handleCheckOrCall() {
   }
 
   renderGameBoard();
+  updatePotDisplay();
+  saveGameState();
 }
 
 // Poker rule: Betting round is complete when all active players have:
@@ -595,11 +1083,20 @@ function startNewBettingRound() {
   });
 
   // IMPORTANT:
-  // Start new street from first active player
-
-  gameState.currentPlayerIndex = gameState.players.findIndex(
-    (name) => playersData[name].status === "active",
-  );
+  // Start new street from dealer (or first active player after dealer)
+  
+  let nextPlayerIndex = (gameState.dealerIndex + 1) % gameState.players.length;
+  
+  // Find first active player starting from dealer position
+  for (let i = 0; i < gameState.players.length; i++) {
+    const playerName = gameState.players[nextPlayerIndex];
+    if (playersData[playerName].status === "active") {
+      break;
+    }
+    nextPlayerIndex = (nextPlayerIndex + 1) % gameState.players.length;
+  }
+  
+  gameState.currentPlayerIndex = nextPlayerIndex;
 
   renderGameBoard();
 
@@ -778,6 +1275,8 @@ document.getElementById("confirmRaiseBtn").addEventListener("click", () => {
   moveToNextPlayer();
 
   renderGameBoard();
+  updatePotDisplay();
+  saveGameState();
 });
 
 document.getElementById("cancelRaiseBtn").addEventListener("click", () => {
@@ -816,6 +1315,10 @@ function handleAllIn() {
     gameState.players[gameState.currentPlayerIndex],
   );
 
+  renderGameBoard();
+  updatePotDisplay();
+  saveGameState();
+
   // Check if betting is done
   if (isBettingRoundComplete()) {
     showNotification(
@@ -843,6 +1346,10 @@ function handleFold() {
     gameState.players[gameState.currentPlayerIndex],
   );
 
+  renderGameBoard();
+  updatePotDisplay();
+  saveGameState();
+
   // Check if only one player remains active
   const activePlayers = gameState.players.filter(
     (name) =>
@@ -859,23 +1366,48 @@ function handleFold() {
 }
 
 function moveToNextPlayer() {
+  const totalPlayers = gameState.players.length;
+
+  // Safety check
+  if (totalPlayers === 0) return;
+
+  let nextIndex = gameState.currentPlayerIndex;
   let attempts = 0;
 
   do {
-    gameState.currentPlayerIndex =
-      (gameState.currentPlayerIndex + 1) % gameState.players.length;
-
+    nextIndex = (nextIndex + 1) % totalPlayers;
     attempts++;
 
-    if (attempts > gameState.players.length) {
+    // Prevent infinite loop
+    if (attempts > totalPlayers) {
+      console.warn("No valid next player found");
       return;
     }
-  } while (
-    playersData[gameState.players[gameState.currentPlayerIndex]].status ===
-    "folded"
-  );
 
-  renderGameBoard();
+    const playerName = gameState.players[nextIndex];
+    const player = playersData[playerName];
+
+    // Skip folded and all-in players
+    if (
+      player &&
+      player.status === "active"
+    ) {
+      // If betting round already complete, stop here
+      if (isBettingRoundComplete()) {
+        return;
+      }
+
+      gameState.currentPlayerIndex = nextIndex;
+
+      renderGameBoard();
+      updatePotDisplay();
+      saveGameState();
+
+      return;
+    }
+  } while (attempts <= totalPlayers);
+
+  console.warn("Could not move to next active player");
 }
 
 // ====================
@@ -1138,41 +1670,210 @@ function distributeWinnings() {
 document.getElementById("newRoundBtn").addEventListener("click", newRound);
 document.getElementById("resetGameBtn").addEventListener("click", resetGame);
 
+// ====================
+// ADMIN CONTROLS
+// ====================
+
+/**
+ * Generic helper to open a modal by ID
+ */
+function openModal(modalId) {
+  const modal = document.getElementById(modalId);
+  if (modal) {
+    modal.classList.add("active");
+  }
+}
+
+/**
+ * Generic helper to close a modal by ID
+ */
+function closeModal(modalId) {
+  const modal = document.getElementById(modalId);
+  if (modal) {
+    modal.classList.remove("active");
+  }
+}
+
+let adminMode = false;
+
+/**
+ * Admin function to force a player to fold
+ */
+function handlePlayerFold(playerName, isAdmin = false) {
+  const player = playersData[playerName];
+  if (!player) return;
+
+  player.status = "folded";
+
+  if (isAdmin) {
+    addToHistory(`🔨 Admin forced ${playerName} to fold`);
+  } else {
+    addToHistory(`${playerName} folded`);
+  }
+  showNotification(`${playerName} folded`, "info");
+
+  gameState.playersWhoHaveActedThisRound.add(playerName);
+}
+
+document.getElementById("toggleAdminBtn").addEventListener("click", () => {
+  adminMode = !adminMode;
+  document.getElementById("adminPanel").style.display = adminMode ? "block" : "none";
+  addToHistory(`⚙️  Admin Mode: ${adminMode ? "ON" : "OFF"}`);
+});
+
+document.getElementById("showdownBtn").addEventListener("click", () => {
+  if (gameState.gameStage === "SHOWDOWN" || gameState.gameStage === "RIVER") {
+    executeShowdown();
+    addToHistory("🏆 Showdown forced by admin");
+  } else {
+    showNotification("Not at showdown stage yet", "warning");
+  }
+});
+
+document.getElementById("undoBtn").addEventListener("click", () => {
+  if (gameState.actionHistory && gameState.actionHistory.length > 0) {
+    const lastAction = gameState.actionHistory.pop();
+    addToHistory(`↩️  Undo: ${lastAction}`);
+    showNotification("Last action undone", "info");
+  } else {
+    showNotification("No actions to undo", "warning");
+  }
+});
+
+document.getElementById("forceFoldBtn").addEventListener("click", () => {
+  openPlayerSelectionModal("Select player to fold", (playerName) => {
+    handlePlayerFold(playerName, true);
+    addToHistory(`🔨 Admin forced ${playerName} to fold`);
+  });
+});
+
+document.getElementById("removePlayerBtn").addEventListener("click", () => {
+  openPlayerSelectionModal("Select player to remove", (playerName) => {
+    const idx = gameState.players.indexOf(playerName);
+    if (idx > -1) {
+      gameState.players.splice(idx, 1);
+      delete playersData[playerName];
+      addToHistory(`❌ Admin removed ${playerName} from game`);
+      renderGameBoard();
+    }
+  });
+});
+
+document.getElementById("adjustBalanceBtn").addEventListener("click", () => {
+  openPlayerSelectionModal("Select player to adjust balance", (playerName) => {
+    selectedAdminPlayer = playerName;
+    document.getElementById("selectedPlayerDisplay").textContent = `Selected: ${playerName}`;
+    document.getElementById("balanceAdjustAmount").value = "";
+    document.getElementById("balanceAdjustType").value = "add";
+    openModal("adjustBalanceModal");
+  });
+});
+
+document.getElementById("confirmAdjustBtn").addEventListener("click", () => {
+  if (!selectedAdminPlayer) {
+    showNotification("No player selected", "warning");
+    return;
+  }
+
+  const amount = parseInt(document.getElementById("balanceAdjustAmount").value);
+  const type = document.getElementById("balanceAdjustType").value;
+
+  if (isNaN(amount) || amount < 0) {
+    showNotification("Invalid amount", "error");
+    return;
+  }
+
+  const oldBalance = playersData[selectedAdminPlayer].balance;
+  let newBalance = oldBalance;
+
+  if (type === "add") {
+    newBalance = oldBalance + amount;
+  } else if (type === "subtract") {
+    newBalance = oldBalance - amount;
+  } else if (type === "set") {
+    newBalance = amount;
+  }
+
+  playersData[selectedAdminPlayer].balance = newBalance;
+  addToHistory(
+    `⚙️  Admin adjusted ${selectedAdminPlayer} balance: ₹${oldBalance.toLocaleString("en-IN")} → ₹${newBalance.toLocaleString("en-IN")}`
+  );
+  showNotification(`Balance adjusted for ${selectedAdminPlayer}`, "success");
+  closeModal("adjustBalanceModal");
+  renderGameBoard();
+});
+
+document.getElementById("cancelAdjustBtn").addEventListener("click", () => {
+  closeModal("adjustBalanceModal");
+});
+
+let selectedAdminPlayer = null;
+
+function openPlayerSelectionModal(title, callback) {
+  document.getElementById("selectPlayerTitle").textContent = title;
+  const list = document.getElementById("playerSelectionList");
+  list.innerHTML = "";
+
+  gameState.players.forEach((playerName) => {
+    const div = document.createElement("div");
+    div.className = "player-selection-item";
+    div.style.cssText =
+      "padding: 10px; margin: 5px 0; background: #f0f0f0; border-radius: 5px; cursor: pointer; border: 2px solid transparent;";
+    div.textContent = `${playerName} - Balance: ₹${playersData[
+      playerName
+    ].balance.toLocaleString("en-IN")}`;
+    div.onmouseover = () => (div.style.background = "#e0e0e0");
+    div.onmouseout = () => (div.style.background = "#f0f0f0");
+    div.onclick = () => {
+      callback(playerName);
+      closeModal("selectPlayerModal");
+    };
+    list.appendChild(div);
+  });
+
+  document.getElementById("cancelSelectPlayerBtn").onclick = () => {
+    closeModal("selectPlayerModal");
+  };
+
+  openModal("selectPlayerModal");
+}
+
 function newRound() {
   gameState.roundNumber++;
+  clearSavedGameState();
+
+  // Move dealer button clockwise
+  gameState.dealerIndex = (gameState.dealerIndex + 1) % gameState.players.length;
+
+  // Start from player after dealer
+  gameState.currentPlayerIndex = (gameState.dealerIndex + 1) % gameState.players.length;
 
   gameState.pot = 0;
-
   gameState.currentBet = 0;
-
   gameState.communityCards = [];
-
   gameState.gameStage = "PRE_FLOP";
-
   gameState.bettingRoundNumber = 0;
-
   gameState.playersWhoHaveActedThisRound.clear();
-
   gameState.lastRaiseSize = 0;
-
   gameState.lastAggressorIndex = null;
-
   gameState.history = [];
+  gameState.raiseSequenceTracker = {};
+  gameState.cardsRevealed = false;
 
   gameState.players.forEach((playerName) => {
     playersData[playerName].status =
       playersData[playerName].balance > 0 ? "active" : "folded";
-
     playersData[playerName].currentBet = 0;
   });
 
-  gameState.currentPlayerIndex = 0;
-
   renderGameBoard();
-
   updateHistoryDisplay();
 
-  showNotification(`Round ${gameState.roundNumber} started!`, "info");
+  addToHistory(`--- Round ${gameState.roundNumber} Started ---`);
+  addToHistory(`🎰 Dealer: ${gameState.players[gameState.dealerIndex]}`);
+  addToHistory(`📍 First to act: ${gameState.players[gameState.currentPlayerIndex]}`);
+
+  showNotification(`Round ${gameState.roundNumber} started! Dealer moved to ${gameState.players[gameState.dealerIndex]}`, "info");
 }
 
 function resetGame() {
@@ -1190,6 +1891,9 @@ function resetGame() {
     moneyTrackingModal.classList.remove("active");
 
     document.getElementById("raiseAmount").value = "";
+
+    // Clear saved game state from localStorage
+    clearSavedGameState();
 
     // Reset to setup
     updatePlayerSetupList();
@@ -1259,4 +1963,5 @@ document.getElementById("closeTrackingBtn").addEventListener("click", () => {
 // ====================
 // INITIALIZATION
 // ====================
-updatePlayerSetupList();
+// Initialize page - check for saved game or show setup
+initializePage();

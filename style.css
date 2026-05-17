@@ -396,6 +396,30 @@ textarea:focus {
     box-shadow: 0 2px 8px rgba(244, 67, 54, 0.15);
 }
 
+.player-card.dealer {
+    border-color: #ffc107;
+    box-shadow: 0 2px 8px rgba(255, 193, 7, 0.15);
+    background: #fffef5;
+}
+
+.badge {
+    position: absolute;
+    font-size: 0.7em;
+    font-weight: bold;
+    padding: 3px 6px;
+    border-radius: 3px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+    white-space: nowrap;
+    z-index: 10;
+}
+
+.dealer-badge {
+    top: -6px;
+    right: -6px;
+    background: #ffc107;
+    color: #333333;
+}
+
 .player-name {
     font-size: 1.05em;
     font-weight: bold;
@@ -959,6 +983,72 @@ textarea:focus {
 
 .tracking-stat.loss .value {
     color: #f44336;
+}
+
+/* ===========================
+   ADMIN CONTROLS & MODALS
+   =========================== */
+.player-selection-item {
+    padding: 10px;
+    margin: 5px 0;
+    background: #f0f0f0;
+    border-radius: 5px;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: all 0.2s ease;
+}
+
+.player-selection-item:hover {
+    background: #e0e0e0;
+    border-color: #999;
+}
+
+#adminPanel {
+    background: #f5f5f5;
+    border: 1px dashed #999;
+    border-radius: 5px;
+    padding: 10px;
+    margin-top: 10px;
+}
+
+#adminPanel h4 {
+    margin: 0 0 10px 0;
+    color: #333;
+    font-size: 0.95em;
+}
+
+#adminPanel button {
+    margin: 3px;
+    padding: 6px 12px;
+    font-size: 0.85em;
+}
+
+.form-group {
+    margin: 12px 0;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 500;
+    color: #333;
+}
+
+.form-group input,
+.form-group select {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 0.95em;
+    box-sizing: border-box;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+    outline: none;
+    border-color: #4caf50;
+    box-shadow: 0 0 4px rgba(76, 175, 80, 0.3);
 }
 
 /* ===========================
