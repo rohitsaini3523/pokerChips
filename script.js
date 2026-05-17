@@ -3,10 +3,184 @@
 // ========================================
 
 // ====================
+// LINKED LIST IMPLEMENTATION FOR PLAYERS
+// ====================
+class LinkedListNode {
+  constructor(data) {
+    this.data = data;
+    this.next = null;
+    this.prev = null;
+  }
+}
+
+class CircularLinkedList {
+  constructor() {
+    this.head = null;
+    this.tail = null;
+    this.size = 0;
+    this.currentNode = null;
+  }
+
+  append(data) {
+    const newNode = new LinkedListNode(data);
+    if (this.size === 0) {
+      this.head = newNode;
+      this.tail = newNode;
+      newNode.next = newNode;
+      newNode.prev = newNode;
+      this.currentNode = newNode;
+    } else {
+      newNode.prev = this.tail;
+      newNode.next = this.head;
+      this.tail.next = newNode;
+      this.head.prev = newNode;
+      this.tail = newNode;
+    }
+    this.size++;
+  }
+
+  removeNode(node) {
+    if (this.size === 0) return false;
+    if (this.size === 1) {
+      this.head = null;
+      this.tail = null;
+      this.currentNode = null;
+      this.size = 0;
+      return true;
+    }
+    if (node === this.currentNode) {
+      this.currentNode = node.next;
+    }
+    node.prev.next = node.next;
+    node.next.prev = node.prev;
+    if (node === this.head) this.head = node.next;
+    if (node === this.tail) this.tail = node.prev;
+    this.size--;
+    return true;
+  }
+
+  removeByData(data) {
+    let current = this.head;
+    for (let i = 0; i < this.size; i++) {
+      if (current.data === data) {
+        return this.removeNode(current);
+      }
+      current = current.next;
+    }
+    return false;
+  }
+
+  findNode(data) {
+    if (this.size === 0) return null;
+    let current = this.head;
+    for (let i = 0; i < this.size; i++) {
+      if (current.data === data) return current;
+      current = current.next;
+    }
+    return null;
+  }
+
+  toArray() {
+    const arr = [];
+    if (this.size === 0) return arr;
+    let current = this.head;
+    for (let i = 0; i < this.size; i++) {
+      arr.push(current.data);
+      current = current.next;
+    }
+    return arr;
+  }
+
+  filter(callback) {
+    const result = [];
+    if (this.size === 0) return result;
+    let current = this.head;
+    for (let i = 0; i < this.size; i++) {
+      if (callback(current.data)) {
+        result.push(current.data);
+      }
+      current = current.next;
+    }
+    return result;
+  }
+
+  forEach(callback) {
+    if (this.size === 0) return;
+    let current = this.head;
+    for (let i = 0; i < this.size; i++) {
+      callback(current.data, i);
+      current = current.next;
+    }
+  }
+
+  getAtIndex(index) {
+    if (index < 0 || index >= this.size) return null;
+    let current = this.head;
+    for (let i = 0; i < index; i++) {
+      current = current.next;
+    }
+    return current.data;
+  }
+
+  getNodeAtIndex(index) {
+    if (index < 0 || index >= this.size) return null;
+    let current = this.head;
+    for (let i = 0; i < index; i++) {
+      current = current.next;
+    }
+    return current;
+  }
+
+  getIndexOfData(data) {
+    let current = this.head;
+    for (let i = 0; i < this.size; i++) {
+      if (current.data === data) return i;
+      current = current.next;
+    }
+    return -1;
+  }
+
+  moveToNext() {
+    if (this.size === 0) return null;
+    this.currentNode = this.currentNode.next;
+    return this.currentNode.data;
+  }
+
+  getCurrentData() {
+    return this.currentNode ? this.currentNode.data : null;
+  }
+
+  setCurrentByData(data) {
+    const node = this.findNode(data);
+    if (node) {
+      this.currentNode = node;
+      return true;
+    }
+    return false;
+  }
+
+  setCurrentByIndex(index) {
+    const node = this.getNodeAtIndex(index);
+    if (node) {
+      this.currentNode = node;
+      return true;
+    }
+    return false;
+  }
+
+  clear() {
+    this.head = null;
+    this.tail = null;
+    this.size = 0;
+    this.currentNode = null;
+  }
+}
+
+// ====================
 // GLOBAL STATE
 // ====================
 const gameState = {
-  players: [],
+  players: new CircularLinkedList(),
   currentPlayerIndex: 0,
   dealerIndex: 0,
   pot: 0,
@@ -574,7 +748,7 @@ function progressGameStage() {
   );
 
   // Check 4-player special rule
-  if (gameState.players.length === 4 && !gameState.cardsRevealed) {
+  if (gameState.players.size === 4 && !gameState.cardsRevealed) {
     const raiseTracker = gameState.raiseSequenceTracker;
     // If we have a raise-re-raise pattern and Player 1 hasn't called yet, don't progress
     if (raiseTracker.player1Raised && raiseTracker.player2Reraised && !raiseTracker.player1Called) {
@@ -626,7 +800,7 @@ function progressGameStage() {
  */
 function getAvailableActions() {
   const currentPlayer =
-    playersData[gameState.players[gameState.currentPlayerIndex]];
+    playersData[gameState.players.getAtIndex(gameState.currentPlayerIndex)];
 
   if (!currentPlayer || currentPlayer.status === "folded") {
     return {
@@ -789,11 +963,11 @@ function validateAndStartGame() {
 
   // Collect player names
   const nameInputs = document.querySelectorAll(".player-name-input");
-  gameState.players = [];
+  gameState.players.clear();
 
   nameInputs.forEach((input, index) => {
     const name = input.value.trim() || `Player ${index + 1}`;
-    gameState.players.push(name);
+    gameState.players.append(name);
     playersData[name] = {
       name: name,
       balance: amount,
@@ -816,8 +990,20 @@ function validateAndStartGame() {
 }
 
 function initializeGame() {
-  // Start from player after dealer
-  gameState.currentPlayerIndex = (gameState.dealerIndex + 1) % gameState.players.length;
+  // Start from first eligible player after dealer
+  let nextPlayerIndex = (gameState.dealerIndex + 1) % gameState.players.size;
+  
+  // Skip eliminated players to find first eligible player
+  for (let i = 0; i < gameState.players.size; i++) {
+    const playerName = gameState.players.getAtIndex(nextPlayerIndex);
+    const player = playersData[playerName];
+    if (player.balance > 0) {
+      break;
+    }
+    nextPlayerIndex = (nextPlayerIndex + 1) % gameState.players.size;
+  }
+  
+  gameState.currentPlayerIndex = nextPlayerIndex;
 
   gameState.pot = 0;
   gameState.currentBet = 0;
@@ -839,10 +1025,10 @@ function initializeGame() {
   renderGameBoard();
 
   addToHistory("=== ROUND STARTED ===");
-  addToHistory(`🎰 Dealer: ${gameState.players[gameState.dealerIndex]}`);
-  addToHistory(`📍 First to act: ${gameState.players[gameState.currentPlayerIndex]}`);
+  addToHistory(`🎰 Dealer: ${gameState.players.getAtIndex(gameState.dealerIndex)}`);
+  addToHistory(`📍 First to act: ${gameState.players.getAtIndex(gameState.currentPlayerIndex)}`);
   
-  if (gameState.players.length === 4) {
+  if (gameState.players.size === 4) {
     addToHistory("⚠️ SPECIAL 4-PLAYER RULE: P1 raises → P2 re-raises → Cards held until P1 calls!");
   }
 }
@@ -853,10 +1039,11 @@ function initializeGame() {
 function renderGameBoard() {
   playersContainer.innerHTML = "";
 
-  gameState.players.forEach((playerName, index) => {
+  let playerIndex = 0;
+  gameState.players.forEach((playerName) => {
     const player = playersData[playerName];
-    const isActive = index === gameState.currentPlayerIndex;
-    const isDealer = index === gameState.dealerIndex;
+    const isActive = playerIndex === gameState.currentPlayerIndex;
+    const isDealer = playerIndex === gameState.dealerIndex;
     
     const playerCard = document.createElement("div");
 
@@ -884,6 +1071,7 @@ function renderGameBoard() {
         `;
 
     playersContainer.appendChild(playerCard);
+    playerIndex++;
   });
 
   updatePotDisplay();
@@ -894,7 +1082,7 @@ function updatePotDisplay() {
   potAmount.textContent = gameState.pot.toLocaleString("en-IN");
   roundNumber.textContent = gameState.roundNumber;
   document.getElementById("currentPlayerDisplay").textContent =
-    gameState.players[gameState.currentPlayerIndex];
+    gameState.players.getAtIndex(gameState.currentPlayerIndex);
   document.getElementById("currentBetDisplay").textContent =
     `₹${gameState.currentBet.toLocaleString("en-IN")}`;
 
@@ -907,7 +1095,7 @@ function updatePotDisplay() {
 
 function updateActionButtons() {
   const currentPlayer =
-    playersData[gameState.players[gameState.currentPlayerIndex]];
+    playersData[gameState.players.getAtIndex(gameState.currentPlayerIndex)];
 
   if (!currentPlayer) return;
 
@@ -998,7 +1186,7 @@ document.getElementById("allInBtn").addEventListener("click", handleAllIn);
 document.getElementById("foldBtn").addEventListener("click", handleFold);
 function handleCheckOrCall() {
   const currentPlayer =
-    playersData[gameState.players[gameState.currentPlayerIndex]];
+    playersData[gameState.players.getAtIndex(gameState.currentPlayerIndex)];
 
   const callAmount = gameState.currentBet - currentPlayer.currentBet;
 
@@ -1083,17 +1271,20 @@ function startNewBettingRound() {
   });
 
   // IMPORTANT:
-  // Start new street from dealer (or first active player after dealer)
+  // Start new street from dealer (or first eligible player after dealer)
+  // Eligible = not folded and not eliminated
   
-  let nextPlayerIndex = (gameState.dealerIndex + 1) % gameState.players.length;
+  let nextPlayerIndex = (gameState.dealerIndex + 1) % gameState.players.size;
   
-  // Find first active player starting from dealer position
-  for (let i = 0; i < gameState.players.length; i++) {
-    const playerName = gameState.players[nextPlayerIndex];
-    if (playersData[playerName].status === "active") {
+  // Find first eligible player starting from dealer position
+  for (let i = 0; i < gameState.players.size; i++) {
+    const playerName = gameState.players.getAtIndex(nextPlayerIndex);
+    const player = playersData[playerName];
+    // Include active and all-in players (exclude folded and eliminated)
+    if (player.status !== "folded" && player.status !== "eliminated") {
       break;
     }
-    nextPlayerIndex = (nextPlayerIndex + 1) % gameState.players.length;
+    nextPlayerIndex = (nextPlayerIndex + 1) % gameState.players.size;
   }
   
   gameState.currentPlayerIndex = nextPlayerIndex;
@@ -1110,7 +1301,7 @@ function startNewBettingRound() {
 
 function handleRaise() {
   const currentPlayer =
-    playersData[gameState.players[gameState.currentPlayerIndex]];
+    playersData[gameState.players.getAtIndex(gameState.currentPlayerIndex)];
   const stageInfo = getCurrentStageInfo();
 
   // Validate poker raise rule
@@ -1121,7 +1312,7 @@ function handleRaise() {
   }
 
   // Show raise modal with suggestions
-  const currentBetDisplay = document.getElementById("currentBetDisplay");
+  const raiseCurrentBetDisplay = document.getElementById("raiseCurrentBetDisplay");
   const availableBalanceDisplay = document.getElementById(
     "availableBalanceDisplay",
   );
@@ -1129,7 +1320,7 @@ function handleRaise() {
     "yourCurrentBetDisplay",
   );
 
-  currentBetDisplay.textContent = `₹${gameState.currentBet.toLocaleString("en-IN")}`;
+  raiseCurrentBetDisplay.textContent = `₹${gameState.currentBet.toLocaleString("en-IN")}`;
   availableBalanceDisplay.textContent = `₹${currentPlayer.balance.toLocaleString("en-IN")}`;
   yourCurrentBetDisplay.textContent = `₹${currentPlayer.currentBet.toLocaleString("en-IN")}`;
 
@@ -1176,7 +1367,7 @@ function setSuggestedRaise(amount) {
 
   // Highlight selected button
   const currentPlayer =
-    playersData[gameState.players[gameState.currentPlayerIndex]];
+    playersData[gameState.players.getAtIndex(gameState.currentPlayerIndex)];
   const suggestions = {
     minRaiseBtn:
       gameState.currentBet -
@@ -1212,7 +1403,7 @@ document.getElementById("confirmRaiseBtn").addEventListener("click", () => {
   const raiseTo = parseInt(document.getElementById("raiseAmount").value);
 
   const currentPlayer =
-    playersData[gameState.players[gameState.currentPlayerIndex]];
+    playersData[gameState.players.getAtIndex(gameState.currentPlayerIndex)];
 
   if (!raiseTo || raiseTo <= gameState.currentBet) {
     showNotification("Invalid raise", "error");
@@ -1286,7 +1477,7 @@ document.getElementById("cancelRaiseBtn").addEventListener("click", () => {
 
 function handleAllIn() {
   const currentPlayer =
-    playersData[gameState.players[gameState.currentPlayerIndex]];
+    playersData[gameState.players.getAtIndex(gameState.currentPlayerIndex)];
   const allInAmount = currentPlayer.balance;
 
   if (allInAmount === 0) {
@@ -1312,7 +1503,7 @@ function handleAllIn() {
 
   // Mark player as having acted
   gameState.playersWhoHaveActedThisRound.add(
-    gameState.players[gameState.currentPlayerIndex],
+    gameState.players.getAtIndex(gameState.currentPlayerIndex),
   );
 
   renderGameBoard();
@@ -1335,7 +1526,7 @@ function handleAllIn() {
 
 function handleFold() {
   const currentPlayer =
-    playersData[gameState.players[gameState.currentPlayerIndex]];
+    playersData[gameState.players.getAtIndex(gameState.currentPlayerIndex)];
   currentPlayer.status = "folded";
 
   addToHistory(`${currentPlayer.name} folded`);
@@ -1343,7 +1534,7 @@ function handleFold() {
 
   // Mark player as having acted
   gameState.playersWhoHaveActedThisRound.add(
-    gameState.players[gameState.currentPlayerIndex],
+    gameState.players.getAtIndex(gameState.currentPlayerIndex),
   );
 
   renderGameBoard();
@@ -1366,48 +1557,52 @@ function handleFold() {
 }
 
 function moveToNextPlayer() {
-  const totalPlayers = gameState.players.length;
+  const totalPlayers = gameState.players.size;
 
   // Safety check
   if (totalPlayers === 0) return;
 
-  let nextIndex = gameState.currentPlayerIndex;
+  let nextIndex = (gameState.currentPlayerIndex + 1) % totalPlayers;
   let attempts = 0;
 
-  do {
-    nextIndex = (nextIndex + 1) % totalPlayers;
-    attempts++;
-
-    // Prevent infinite loop
-    if (attempts > totalPlayers) {
-      console.warn("No valid next player found");
-      return;
-    }
-
-    const playerName = gameState.players[nextIndex];
+  // Find next ACTIVE player who hasn't acted this round
+  while (attempts < totalPlayers) {
+    const playerName = gameState.players.getAtIndex(nextIndex);
     const player = playersData[playerName];
 
-    // Skip folded and all-in players
+    // Move to player if they:
+    // 1. Exist
+    // 2. Are ACTIVE (not folded, not all-in)
+    // 3. Haven't acted this round yet
     if (
       player &&
-      player.status === "active"
+      player.status === "active" &&
+      !gameState.playersWhoHaveActedThisRound.has(playerName)
     ) {
-      // If betting round already complete, stop here
-      if (isBettingRoundComplete()) {
-        return;
-      }
-
       gameState.currentPlayerIndex = nextIndex;
-
       renderGameBoard();
       updatePotDisplay();
       saveGameState();
-
       return;
     }
-  } while (attempts <= totalPlayers);
 
-  console.warn("Could not move to next active player");
+    // Move to next player
+    nextIndex = (nextIndex + 1) % totalPlayers;
+    attempts++;
+  }
+
+  // No active player found who hasn't acted
+  // This means all active players have acted - betting round is complete
+  if (isBettingRoundComplete()) {
+    const progressed = progressGameStage();
+    if (progressed) {
+      startNewBettingRound();
+    } else {
+      endRound();
+    }
+  } else {
+    console.warn("Could not move to next active player and betting round not complete");
+  }
 }
 
 // ====================
@@ -1461,10 +1656,6 @@ document
   .addEventListener("click", openWinnerSelection);
 
 function endRound() {
-  if (gameState.pot === 0) {
-    showNotification("No pot to distribute", "error");
-    return;
-  }
   openWinnerSelection();
 }
 
@@ -1749,9 +1940,8 @@ document.getElementById("forceFoldBtn").addEventListener("click", () => {
 
 document.getElementById("removePlayerBtn").addEventListener("click", () => {
   openPlayerSelectionModal("Select player to remove", (playerName) => {
-    const idx = gameState.players.indexOf(playerName);
-    if (idx > -1) {
-      gameState.players.splice(idx, 1);
+    const removed = gameState.players.removeByData(playerName);
+    if (removed) {
       delete playersData[playerName];
       addToHistory(`❌ Admin removed ${playerName} from game`);
       renderGameBoard();
@@ -1843,10 +2033,22 @@ function newRound() {
   clearSavedGameState();
 
   // Move dealer button clockwise
-  gameState.dealerIndex = (gameState.dealerIndex + 1) % gameState.players.length;
+  gameState.dealerIndex = (gameState.dealerIndex + 1) % gameState.players.size;
 
-  // Start from player after dealer
-  gameState.currentPlayerIndex = (gameState.dealerIndex + 1) % gameState.players.length;
+  // Start from first eligible player after dealer
+  let nextPlayerIndex = (gameState.dealerIndex + 1) % gameState.players.size;
+  
+  // Skip eliminated players to find first eligible player
+  for (let i = 0; i < gameState.players.size; i++) {
+    const playerName = gameState.players.getAtIndex(nextPlayerIndex);
+    const player = playersData[playerName];
+    if (player.balance > 0) {
+      break;
+    }
+    nextPlayerIndex = (nextPlayerIndex + 1) % gameState.players.size;
+  }
+  
+  gameState.currentPlayerIndex = nextPlayerIndex;
 
   gameState.pot = 0;
   gameState.currentBet = 0;
@@ -1870,10 +2072,10 @@ function newRound() {
   updateHistoryDisplay();
 
   addToHistory(`--- Round ${gameState.roundNumber} Started ---`);
-  addToHistory(`🎰 Dealer: ${gameState.players[gameState.dealerIndex]}`);
-  addToHistory(`📍 First to act: ${gameState.players[gameState.currentPlayerIndex]}`);
+  addToHistory(`🎰 Dealer: ${gameState.players.getAtIndex(gameState.dealerIndex)}`);
+  addToHistory(`📍 First to act: ${gameState.players.getAtIndex(gameState.currentPlayerIndex)}`);
 
-  showNotification(`Round ${gameState.roundNumber} started! Dealer moved to ${gameState.players[gameState.dealerIndex]}`, "info");
+  showNotification(`Round ${gameState.roundNumber} started! Dealer moved to ${gameState.players.getAtIndex(gameState.dealerIndex)}`, "info");
 }
 
 function resetGame() {

@@ -115,7 +115,7 @@
         <div class="modal-content">
             <h2>Raise Amount</h2>
             <div class="raise-info">
-                <p>Current Bet: ₹<span id="currentBetDisplay">0</span></p>
+                <p>Current Bet: ₹<span id="raiseCurrentBetDisplay">0</span></p>
                 <p>Available Balance: ₹<span id="availableBalanceDisplay">0</span></p>
                 <p>Your Current Bet: ₹<span id="yourCurrentBetDisplay">0</span></p>
             </div>
@@ -222,6 +222,27 @@
             </div>
         </div>
     </div>
+
+    <!-- Initialize modal close handlers -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const cancelHandlers = {
+                'cancelWinnerBtn': 'winnerModal',
+                'cancelSelectPlayerBtn': 'selectPlayerModal',
+                'cancelAdjustBtn': 'adjustBalanceModal'
+            };
+            
+            Object.entries(cancelHandlers).forEach(([btnId, modalId]) => {
+                const btn = document.getElementById(btnId);
+                const modal = document.getElementById(modalId);
+                if (btn && modal) {
+                    btn.addEventListener('click', () => {
+                        modal.classList.remove('active');
+                    });
+                }
+            });
+        });
+    </script>
 
     <script src="script.js"></script>
 </body>
