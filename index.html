@@ -29,6 +29,11 @@
 
             <div id="playerSetupList" class="player-setup-list"></div>
 
+            <div class="quick-setup">
+                <button id="sampleNamesBtn" class="btn-secondary btn-small">Use sample names</button>
+                <button id="randomizeNamesBtn" class="btn-secondary btn-small">Randomize names</button>
+            </div>
+
             <div class="setup-actions">
                 <button id="startGameBtn" class="btn-primary">Start Game</button>
             </div>
@@ -59,6 +64,10 @@
                     <span class="current-player-label">Current Turn:</span>
                     <span class="current-player-name" id="currentPlayerDisplay">Player 1</span>
                 </div>
+                <div class="header-actions">
+                    <button id="showSummaryBtn" class="btn-small btn-secondary">Summary</button>
+                    <button id="themeToggleBtn" class="btn-small btn-secondary">🌙 Theme</button>
+                </div>
             </div>
 
             <!-- NOTIFICATION AREA -->
@@ -86,6 +95,11 @@
                     <h3>Betting History</h3>
                     <div id="historyLog" class="history-log"></div>
                     <button id="clearHistoryBtn" class="btn-small">Clear History</button>
+                </div>
+
+                <div class="summary-panel">
+                    <h3>Table Summary</h3>
+                    <div id="summaryGrid" class="summary-grid"></div>
                 </div>
 
                 <div class="control-panel">

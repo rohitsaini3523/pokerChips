@@ -876,6 +876,29 @@ const raiseModal = document.getElementById("raiseModal");
 const winnerModal = document.getElementById("winnerModal");
 const moneyTrackingModal = document.getElementById("moneyTrackingModal");
 
+const SAMPLE_PLAYER_NAMES = [
+  "Alex",
+  "Blake",
+  "Casey",
+  "Drew",
+  "Emerson",
+  "Fiona",
+  "Gavin",
+  "Harper",
+  "Iris",
+  "Jasper",
+  "Kai",
+  "Lena",
+  "Milo",
+  "Nora",
+  "Owen",
+  "Priya",
+  "Quinn",
+  "Rosa",
+  "Seth",
+  "Tara",
+];
+
 // ====================
 // INITIALIZE PAGE - CHECK FOR SAVED GAME
 // ====================
@@ -884,10 +907,10 @@ const moneyTrackingModal = document.getElementById("moneyTrackingModal");
  * Initialize the page - check for saved game state
  */
 function initializePage() {
+  initTheme();
   const hasSavedGame = loadGameState();
   
   if (hasSavedGame && gameState.gameStarted) {
-    // Restore UI to game screen
     setupScreen.classList.remove("active");
     gameScreen.classList.add("active");
     renderGameBoard();
@@ -896,7 +919,6 @@ function initializePage() {
     showNotification("✅ Game restored from previous session!", "success");
     addToHistory("🔄 Game restored from previous session");
   } else {
-    // Show setup screen
     setupScreen.classList.add("active");
     gameScreen.classList.remove("active");
     updatePlayerSetupList();
@@ -929,8 +951,6 @@ startingAmountInput.addEventListener("change", updatePlayerSetupList);
 
 function updatePlayerSetupList() {
   const count = parseInt(playerCountInput.value);
-  const amount = parseInt(startingAmountInput.value);
-
   playerSetupList.innerHTML = "";
 
   for (let i = 0; i < count; i++) {
@@ -943,6 +963,26 @@ function updatePlayerSetupList() {
     playerSetupList.appendChild(playerItem);
   }
 }
+
+function applySampleNames() {
+  const count = parseInt(playerCountInput.value);
+  const inputs = document.querySelectorAll(".player-name-input");
+  inputs.forEach((input, index) => {
+    const sample = SAMPLE_PLAYER_NAMES[(index + 1) % SAMPLE_PLAYER_NAMES.length];
+    input.value = index % 2 === 0 ? sample : `${sample}${index + 1}`;
+  });
+}
+
+function randomizePlayerNames() {
+  const inputs = document.querySelectorAll(".player-name-input");
+  const shuffled = [...SAMPLE_PLAYER_NAMES].sort(() => Math.random() - 0.5);
+  inputs.forEach((input, index) => {
+    input.value = shuffled[index % shuffled.length] + (index > shuffled.length - 1 ? index : "");
+  });
+}
+
+document.getElementById("sampleNamesBtn").addEventListener("click", applySampleNames);
+document.getElementById("randomizeNamesBtn").addEventListener("click", randomizePlayerNames);
 
 startGameBtn.addEventListener("click", validateAndStartGame);
 
@@ -1036,6 +1076,35 @@ function initializeGame() {
 // ====================
 // GAME BOARD RENDERING
 // ====================
+function renderSummaryPanel() {
+  const summaryGrid = document.getElementById("summaryGrid");
+  if (!summaryGrid) return;
+
+  const activePlayers = gameState.players.filter((name) => playersData[name].status !== "folded");
+  const withChips = gameState.players.filter((name) => playersData[name].balance > 0).length;
+  const totalMoney = gameState.players.toArray().reduce((sum, name) => sum + playersData[name].balance, 0);
+
+  const summaryCards = [
+    { label: "Active", value: `${activePlayers.length}` },
+    { label: "In Play", value: `${withChips}` },
+    { label: "Pot", value: `₹${gameState.pot.toLocaleString("en-IN")}` },
+    { label: "Current Bet", value: `₹${gameState.currentBet.toLocaleString("en-IN")}` },
+    { label: "Stage", value: getCurrentStageInfo().stageName },
+    { label: "Table Bank", value: `₹${totalMoney.toLocaleString("en-IN")}` },
+  ];
+
+  summaryGrid.innerHTML = summaryCards
+    .map(
+      (card) => `
+        <div class="summary-card">
+          <span class="label">${card.label}</span>
+          <span class="value">${card.value}</span>
+        </div>
+      `
+    )
+    .join("");
+}
+
 function renderGameBoard() {
   playersContainer.innerHTML = "";
 
@@ -1074,6 +1143,7 @@ function renderGameBoard() {
     playerIndex++;
   });
 
+  renderSummaryPanel();
   updatePotDisplay();
   updateActionButtons();
 }
@@ -1092,6 +1162,29 @@ function updatePotDisplay() {
   document.getElementById("activePlayerCount").textContent =
     activePlayers.length;
 }
+
+function toggleTheme() {
+  const body = document.body;
+  const isDark = body.classList.toggle("dark-mode");
+  localStorage.setItem("pokerChips_theme", isDark ? "dark" : "light");
+  document.getElementById("themeToggleBtn").textContent = isDark ? "☀️ Theme" : "🌙 Theme";
+}
+
+function initTheme() {
+  const savedTheme = localStorage.getItem("pokerChips_theme");
+  if (savedTheme === "dark") {
+    document.body.classList.add("dark-mode");
+  }
+  document.getElementById("themeToggleBtn").textContent = document.body.classList.contains("dark-mode") ? "☀️ Theme" : "🌙 Theme";
+}
+
+document.getElementById("themeToggleBtn").addEventListener("click", toggleTheme);
+document.getElementById("showSummaryBtn").addEventListener("click", () => {
+  const summaryPanel = document.querySelector(".summary-panel");
+  if (summaryPanel) {
+    summaryPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+});
 
 function updateActionButtons() {
   const currentPlayer =
@@ -1646,6 +1739,27 @@ function updateHistoryDisplay() {
 document.getElementById("clearHistoryBtn").addEventListener("click", () => {
   gameState.history = [];
   updateHistoryDisplay();
+  renderSummaryPanel();
+});
+
+window.addEventListener("keydown", (event) => {
+  if (!gameState.gameStarted) return;
+
+  if (event.key === "c" || event.key === "C") {
+    document.getElementById("checkBtn").click();
+  }
+  if (event.key === "a" || event.key === "A") {
+    document.getElementById("callBtn").click();
+  }
+  if (event.key === "r" || event.key === "R") {
+    document.getElementById("raiseBtn").click();
+  }
+  if (event.key === "f" || event.key === "F") {
+    document.getElementById("foldBtn").click();
+  }
+  if (event.key === "i" || event.key === "I") {
+    document.getElementById("allInBtn").click();
+  }
 });
 
 // ====================
